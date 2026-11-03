@@ -1,0 +1,471 @@
+---
+title: "Rethinking Nearshoring: Sectoral Evidence from EU Imports after 2020"
+output:
+  word_document:
+    reference_docx: "IBR_reference.docx"
+    toc: false
+    number_sections: true
+  pdf_document:
+    latex_engine: xelatex
+    toc: false
+    number_sections: true
+    includes:
+      in_header: "IBR_preamble_no_setspace.tex"
+lang: en
+bibliography: references.bib
+link-citations: true
+geometry:
+  - a4paper
+  - margin=2.5cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+project_dir <- normalizePath(
+  "C:/Users/rstat/Documents/Article_IBR_FINAL",
+  winslash = "/",
+  mustWork = TRUE
+)
+
+if (!dir.exists(file.path(project_dir, "model_results"))) {
+  stop("model_results klasörü bulunamadı.")
+}
+res <- file.path(project_dir, "model_results")
+find_result <- function(filename, folders) {
+  candidates <- file.path(res, folders, filename)
+  found <- candidates[file.exists(candidates)]
+  if (!length(found)) stop("Required saved output missing: ", filename,
+                           "\nLooked in:\n", paste(candidates, collapse="\n"))
+  found[1]
+}
+read_result <- function(filename, folders) read.csv(find_result(filename, folders), stringsAsFactors=FALSE)
+h1 <- read_result("H1_final_robustness_results.csv", c("H1/final_checks", "H1"))
+h2 <- read_result("H2_distance_sector_results.csv", c("H2_distance"))
+h2val <- read_result("H2_validation_sector_trends.csv", c("H2_distance/validation"))
+h2cov <- read_result("H2_validation_covariance_audit.csv", c("H2_distance/validation"))
+h2pre <- read_result("H2_distance_pretrend.csv", c("H2_distance"))
+h3 <- read_result("H3_Turkiye_sector_results.csv", c("H3_Turkiye"))
+h3pre <- read_result("H3_Turkiye_pretrends.csv", c("H3_Turkiye"))
+h3coverage <- read_result("H3_coverage.csv", c("H3_Turkiye"))
+stopifnot(h3$suppliers[h3$hs2==36 & h3$specification=="preH6_2015_2021"]==30L,
+          all(h3$suppliers[!(h3$hs2==36 & h3$specification=="preH6_2015_2021")]==32L))
+stopifnot(nrow(h1)==4L, nrow(h2)==204L, nrow(h2val)==68L, nrow(h3)==6L,
+          length(unique(h2$hs2))==68L, length(unique(h2val$hs2))==68L,
+          all(c("hs2","specification","estimate","p_BH") %in% names(h2)),
+          all(c("hs2","estimate","p_BH") %in% names(h2val)))
+fmtp <- function(x) ifelse(is.na(x), "NA", ifelse(x<.001,"<.001",sprintf("%.3f",x)))
+fmt <- function(x, n=3) sprintf(paste0("%.",n,"f"),x)
+percent <- function(x) 100*(exp(x)-1)
+h2base <- subset(h2, specification=="baseline_2015_2025")
+h2early <- subset(h2, specification=="preH6_2015_2021")
+h2trend <- subset(h2, specification=="linear_distance_trend")
+stopifnot(nrow(h2base)==68L, nrow(h2early)==68L, nrow(h2trend)==68L)
+robust <- Reduce(intersect, list(
+  h2base$hs2[h2base$estimate<0 & h2base$p_BH<.05],
+  h2early$hs2[h2early$estimate<0 & h2early$p_BH<.05],
+  h2trend$hs2[h2trend$estimate<0 & h2trend$p_BH<.05],
+  h2val$hs2[h2val$estimate<0 & h2val$p_BH<.05]))
+stopifnot(setequal(as.integer(robust), c(36L,88L)))
+```
+
+**Abstract**
+
+Nearshoring, the practice of sourcing goods from geographically closer suppliers, has attracted renewed attention as firms reassess the resilience of international supply chains. Disruptions during the COVID-19 pandemic, followed by geopolitical tensions and changes in trade costs, raised expectations that European importers would rely more heavily on nearby markets. This study examines whether such a shift is evident in European Union (EU) imports between 2015 and 2025. Using importer-reported UN Comtrade data for 27 EU countries and 68 product chapters, we analyse changes in the relationship between geographical distance and import values, differences across sectors, and Türkiye's performance relative to more distant suppliers. The analysis employs gravity-based Poisson pseudo-maximum likelihood models and alternative specifications to assess the stability of the findings. We find no robust evidence of a general shift towards nearby suppliers after 2020. Instead, the results differ across product groups. Explosives and pyrotechnic products and aircraft-related goods show the most consistent changes favouring shorter distances, but Türkiye does not exhibit a corresponding, stable relative advantage. These findings suggest that changes in European sourcing geography are selective rather than economy-wide and should not be equated with confirmed supply-chain relocation.
+
+**Keywords:** Nearshoring; EU imports; Trade distance; Sectoral heterogeneity; Supply chains.
+
+# Introduction
+
+Nearshoring refers to the sourcing of goods or the location of production in countries geographically closer to the market being served. It differs from reshoring, which brings production back to the home country, and from friendshoring, which prioritizes suppliers in politically or strategically aligned countries. Proximity may shorten delivery times and ease coordination, but it does not by itself guarantee lower costs, reliable supply or adequate production capacity. These distinctions matter because a discussion about where firms might prefer to source is not necessarily evidence of where they ultimately buy goods.
+
+For several decades before the pandemic, international production was shaped largely by the expansion of global value chains. Improvements in transport, communications and production coordination enabled firms to divide activities across countries and take advantage of specialization and differences in production costs [@gereffi2005; @baldwin2016]. Geographical distance remained a trade cost, but distant suppliers could still be commercially attractive. Resilience concerns were not absent from this model: disruptions, concentrated sourcing and lengthy delivery networks had long presented risks. What changed around 2020 was the prominence of those risks in business and policy discussions.
+
+The COVID-19 pandemic disrupted factories, transport services and the movement of goods, while abrupt changes in demand exposed the limits of supply arrangements designed primarily for efficiency [@gereffi2020; @miroudot2020]. Subsequent shipping pressures, energy-market developments and geopolitical tensions reinforced interest in supply-chain security. For European Union (EU) firms, this debate had a particular geographical dimension. The single market and established commercial links with neighbouring economies offered potential alternatives to more distant sourcing, yet European production networks also depended on specialized suppliers, existing investments and inputs that could not readily be replaced. Firms could respond by diversifying suppliers, holding more inventories or changing contracts without moving sourcing closer to Europe. A shift towards nearshoring was therefore plausible, but not inevitable.
+
+The empirical question is whether the geographical pattern of EU imports changed in the direction suggested by this debate. An increase in imports from a nearby country does not alone establish nearshoring: demand, prices, exchange rates, capacity and product composition may also change. Conversely, a closer-distance advantage within an industry need not benefit every nearby supplier. Aggregate imports can further conceal contrasting developments across products. Testing nearshoring thus requires distinguishing an economy-wide change in the role of distance from sector-specific changes and from the fortunes of individual supplying countries.
+
+This paper addresses three questions. First, did the relationship between geographical distance and EU import values become more negative after 2020, as a generalized nearshoring account would predict? Second, were changes in this relationship concentrated in particular product groups? Third, where the sectoral evidence most consistently favours shorter distances, did Türkiye gain relative to a group of more distant non-EU suppliers selected using information from before 2020? These questions are related, but they concern different outcomes and need not yield the same conclusion.
+
+We examine annual importer-reported EU trade data for 2015–2025, covering 27 importing countries and 68 two-digit chapters of the Harmonized Commodity Description and Coding System (HS). This internationally used product classification groups traded goods into chapters identified by two-digit codes, commonly termed HS2. Two chapters are especially relevant to our eventual findings: HS36 covers explosives, pyrotechnic products, matches and certain combustible preparations, while HS88 covers aircraft, spacecraft and associated parts. Introducing these categories is important because the products and procurement arrangements involved are very different from those of a typical consumer-goods industry. The analysis combines UN Comtrade import values with CEPII measures of bilateral distance and uses gravity-based Poisson pseudo-maximum likelihood (PPML) models. We first estimate an overall change in the distance relationship, then allow it to differ across chapters, and finally examine Türkiye in the two most consistently identified chapters.
+
+The findings do not support a robust general shift in EU imports towards geographically closer suppliers. Although the baseline aggregate estimate runs against the nearshoring prediction, it is sensitive to allowing for an existing distance-related time trend. Sectoral patterns are more varied: only HS36 and HS88 retain a negative distance interaction after adjustment for multiple testing across four specifications. This does not establish that production moved in those industries. Nor does it imply a gain for every nearby country. In a separate exploratory comparison, Türkiye's relative performance in these two chapters does not show a stable post-2020 improvement against the selected more distant suppliers.
+
+The paper contributes to research on supply-chain adjustment in three ways. It evaluates a widely discussed business expectation against observed trade outcomes rather than treating policy statements or individual country gains as evidence of relocation. It distinguishes sectoral responses from the aggregate pattern and tests whether the more prominent results persist under alternative assumptions about earlier trends. Finally, it separates a sector-wide geographical association from the performance of Türkiye as a potential nearby supplier. The analysis remains observational: import values do not reveal firm-level relocation decisions, and the post-2020 period encompasses several simultaneous shocks. Recognizing these boundaries is necessary for drawing useful conclusions from the evidence.
+
+The remainder of the article reviews the relevant literature and develops the research questions, describes the data and methodology, sets out the econometric models, and presents the findings. The final sections discuss their implications, limitations and conclusions. Additional data checks and the selection of Türkiye's comparison group are documented in the appendices.
+
+# Literature review and theoretical background
+
+## Nearshoring and supply-chain resilience
+
+International production has long involved trade-offs among costs, specialization, market access, coordination and delivery reliability. The globalization of value chains and the distribution of production stages across borders mean that geographical proximity is only one determinant of sourcing choices [@baldwin2016; @gereffi2005]. Supply-chain resilience scholarship emphasizes the ability to absorb disruptions, maintain continuity and recover from shocks [@christopher2004; @pettit2019]. In practice, shorter distances may reduce certain transport and coordination exposures while providing no guarantee of capacity, input availability or institutional reliability.
+
+COVID-19 intensified debate over the balance between efficiency and resilience [@gereffi2020; @miroudot2020; @baldwin2022]. Nearshoring, reshoring, supplier diversification and inventory buffering are different strategies. Their effects on observed bilateral imports may overlap, but none is mechanically implied by an increase or decrease in nominal trade values. Firms may add alternative suppliers without abandoning distant ones, shift products within broad industries, or increase inventory while preserving the original production geography. An empirical test of the distance gradient is therefore informative but not a direct observation of relocation decisions.
+
+The sectoral dimension is especially important. Product characteristics, regulatory requirements, production networks and transportation modes differ across industries. The nearshoring debate consequently benefits from evidence that allows geographical responses to vary by sector rather than assuming one homogeneous post-pandemic response [@barbieri2020; @bontadini2024]. The present study examines that heterogeneity within a consistent EU importer and supplier framework.
+
+## Trade costs and geographical distance
+
+Gravity models provide an established framework for relating bilateral trade to economic mass and trade costs. Geographical distance proxies a bundle of costs and frictions, although it cannot separately identify freight charges, delivery times, information frictions or the institutional structure of trading relationships [@anderson2003]. PPML is useful for estimating multiplicative conditional-mean models without log-transforming the dependent variable and for addressing heteroskedasticity concerns [@santos2006].
+
+In the present specification, the level effect of time-invariant bilateral distance is absorbed by importer–supplier–sector fixed effects. The estimable quantity is instead the interaction between log distance and an indicator for 2020 onward. A negative coefficient means that, conditional on the included fixed effects, imports associated with longer distances changed less favorably than imports associated with shorter distances. It does **not** prove that firms physically moved production or that the pandemic caused the change.
+
+## Research hypotheses
+
+**H1 (generalized distance shift).** The association between geographical distance and EU import values becomes more negative after 2020. This is the direction predicted by a strong generalized nearshoring narrative.
+
+**H2 (sectoral heterogeneity).** The post-2020 change in the distance association differs across HS2 chapters; negative changes may be concentrated in selected sectors even if H1 lacks support.
+
+The second question does not require that most sectors become more distance-sensitive. Rather, it asks whether industry-level differences are economically and statistically informative. Because a high-dimensional joint test can be numerically fragile, the article emphasizes sector-specific estimates, adjusted inference and stability across specifications, rather than resting its conclusions on an unusually large omnibus statistic.
+
+**Exploratory Türkiye question.** Within sectors selected by H2, did Türkiye's conditional import performance relative to a predetermined group of more distant suppliers improve after 2020? The sector selection is explicitly data-dependent; the answer is descriptive and should not be represented as an independent confirmation of H2.
+
+# Data and methodology
+
+## Data sources and sample construction
+
+The study uses annual bilateral import values reported by the 27 EU member states to UN Comtrade for 2015–2025. Observations identify the importing country, supplying country, year and product chapter at the two-digit level of the Harmonized System (HS2). The analysis covers 68 chapters, HS28–HS76 and HS78–HS96. Import values are recorded in nominal terms. We combine these observations with CEPII bilateral geographical distances to examine whether the relationship between trade and supplier location changed after 2020.
+
+The integrated trade data contain 1,499,841 observed importer–supplier–year–chapter records. After excluding aggregate partner categories and applying the eligibility and distance-matching criteria, the main distance analysis includes 182 suppliers and 1,025,831 eligible records. The baseline estimation sample comprises 994,063 observations after the estimation procedure excludes uninformative fixed-effect groups. These distinctions are important: the integrated archive, the eligible sample and the observations used to estimate a particular model are not identical. All 27 EU importers are represented. Country-code reconciliation and the sample restrictions are documented in the accompanying reproducibility materials.
+
+## Measurement and data limitations
+
+Our outcome is the recorded value of imports, not the physical quantity purchased or the location of a firm's production facilities. A change in nominal value may arise from changes in prices, quantities or the composition of products within a chapter. Accordingly, we interpret the estimates as changes in trade patterns rather than direct evidence of production relocation. We do not attempt to infer quantities from nominal values where consistent quantity measures are unavailable. Importer–chapter–year fixed effects account for changes common to suppliers serving a given EU market and chapter, while alternative time-trend specifications assess the sensitivity of the distance results. These measures reduce some sources of confounding but cannot separate price from quantity movements or remove all supplier-specific shocks.
+
+We retain reported trade observations without treating missing importer–supplier–year–chapter combinations as zero trade. This avoids imposing trade flows not supported by the source data, although it limits what the study can say about market entry, exit and changes in reporting coverage. Historical changes in HS nomenclature also affect comparability: the source data span H4 (2015–2016), H5 (2017–2021) and H6 (2022–2025), without a complete chapter-level concordance across revisions. We therefore report a shorter 2015–2021 specification and examine selected coverage restrictions. These checks test whether key conclusions depend on later observations or known gaps; they do not fully resolve differences between HS revisions. Missing CEPII matches restrict the supplier universe, and some Romanian chapter-level records are absent in the pre-2020 years. Their implications are addressed through sample checks and the comparison-group sensitivity analysis described in Appendix C.
+
+## Definition of the post-2020 period
+
+The analysis compares 2015–2019 with 2020–2025. An indicator takes the value one from 2020 onwards and zero in earlier years. This division captures the period in which supply-chain resilience and nearshoring became more prominent concerns, but it does not identify the pandemic as an isolated causal shock. The later period also includes geopolitical and economic disturbances. We therefore assess changes in conditional trade relationships, with particular attention to whether similar distance-related patterns were already present before 2020. The annual pre-period diagnostics and trend-adjusted models are central to this interpretation.
+
+# Econometric specification
+
+## Aggregate distance model
+
+For importer $i$, supplier $j$, sector $h$ and year $t$, estimate
+
+$$
+E[V_{ijht}\mid X]=\exp\{\alpha_{ijh}+\lambda_{iht}
+ +\beta(Post_t\times\ln D_{ij})\}.
+$$
+
+Here $V_{ijht}$ is recorded nominal import value, $D_{ij}$ is weighted bilateral distance, $\alpha_{ijh}$ denotes importer–supplier–HS2 fixed effects, and $\lambda_{iht}$ denotes importer–HS2–year fixed effects. Supplier-clustered standard errors allow within-supplier dependence. The baseline hypothesis predicts $\beta<0$. In the model, the importer–supplier–sector fixed effects absorb time-invariant differences in trading relationships, including the main effect of distance. The importer–sector–year effects absorb shocks shared by suppliers serving the same importer and chapter in a given year. The interaction is consequently identified by differences in how import values evolve across supplier distances within these groups. These controls are extensive, but they do not account for every supplier-specific development that may coincide with the post-2020 period. Since the regressor is an interaction with log distance, $\beta$ is a change in the distance elasticity of the conditional mean, **not** a percentage increase in imports from an individual supplier.
+
+A sensitivity specification adds $\gamma(t-2015)\ln D_{ij}$ to account for a secular distance-related trend. Additional checks restrict supplier-year presence, remove selected coverage gaps and limit the period to 2015–2021. Annual interactions relative to 2019 assess whether the apparent post-period change is preceded by nonparallel distance patterns.
+
+## Sector-level distance model
+
+The pooled H2 specification retains the same fixed effects and broad supplier universe but estimates a separate post-distance coefficient for each HS2 chapter:
+
+$$
+E[V_{ijht}\mid X]=\exp\left\{\alpha_{ijh}+\lambda_{iht}
+ +\sum_{k\in\mathcal H}\beta_k\,\mathbf{1}(h=k)
+ (Post_t\times\ln D_{ij})\right\}.
+$$
+
+The 68 $\beta_k$ values are evaluated across four specifications: baseline 2015–2025, 2015–2021, a common linear distance trend, and a final validation allowing a separate distance-related linear trend for each sector. The final validation is important because a common distance trend need not capture divergent historical sector trajectories. The four models answer related but distinct questions. The baseline describes the average change over the full observation window; the shorter sample limits exposure to the 2022 HS revision and later shocks; the common-trend specification accounts for a shared secular change in distance sensitivity; and the sector-specific-trend model permits each chapter to follow its own linear trajectory. Agreement across these alternatives is therefore more informative than significance in any one model, although it does not eliminate remaining confounding. The baseline and validation models each use 994,063 estimated observations and 182 supplier clusters.
+
+For each specification, Benjamini–Hochberg (BH) adjustment is applied across the 68 sector-level p-values. This controls the expected false-discovery proportion under the relevant statistical assumptions; it does not correct model misspecification or establish causality. Separate pre-2020 sector-specific linear distance trends are examined as diagnostics. A nonsignificant diagnostic does not establish parallel trends.
+
+The interpretation focuses on the direction and stability of chapter-level estimates across specifications rather than relying on a numerically unstable joint test. Technical diagnostics for that test are documented in Appendix A.
+
+## Türkiye comparison
+
+HS36 and HS88 are chosen **after observing H2 results**, because they are the only chapters with negative BH-significant coefficients in all four H2 specifications. The Türkiye follow-up defines its candidate comparison set using a frozen list of 31 non-EU suppliers selected using pre-2020 screening information and recorded as geographically more distant than Türkiye. The comparison-country list is fixed before examining the HS36 and HS88 outcomes; no supplier is added or removed on the basis of those estimates. Appendix C documents the original four-part pre-2020 eligibility screen, the import-weighted CEPII distance rule, the 206-to-41-to-31 selection sequence, and the Romania-exclusion sensitivity test. For each selected chapter $h$, the comparison is
+
+$$
+E[V_{ijt}^{(h)}\mid X]=\exp\left\{\alpha_{ij}^{(h)}+\lambda_{it}^{(h)}
+ +\delta_h[\mathbf{1}(j=\mathrm{TUR})\times Post_t]\right\}.
+$$
+
+Importer–supplier fixed effects absorb persistent bilateral relationships, and importer–year fixed effects absorb importer-wide annual shocks within the chapter. The reported transformation $100[\exp(\widehat\delta_h)-1]$ describes a conditional percentage differential relative to the selected comparison suppliers, not Türkiye's total export growth or a direct market-share effect. Sensitivity checks restrict the period to 2015–2021 or include a Türkiye-specific linear trend. Separate 2015–2019 Türkiye-specific trends diagnose prior differences.
+
+**Inference limitation.** Türkiye is the sole focal supplier. Supplier-clustered standard errors and conventional p-values in this design do not provide reliable confirmatory treatment-level inference with one treated cluster. These statistics are reported transparently as descriptive screening measures, not as causal treatment-effect tests. The data-dependent selection of HS36 and HS88 further precludes treating this exercise as independent validation of the sector findings.
+
+# Empirical findings
+
+## Aggregate results
+
+Table 1 reports the aggregate distance interactions. Because the coefficient multiplies log distance, it should be interpreted as a change in the distance elasticity of conditional imports, not as a percentage change for a particular country. A positive estimate means that, relative to the pre-2020 period and conditional on the model’s fixed effects, import values became less negatively related—or more positively related—to distance. This does not mean that transport costs fell or that European buyers deliberately preferred distant suppliers. The baseline coefficient is +0.0938 (SE 0.0365, *p* = 0.0103), which is opposite to the negative direction predicted by generalized nearshoring. The positive estimate changes little when the sample is restricted by supplier-year presence. However, adding a distance-specific linear time trend reduces the post coefficient to +0.0305 (*p* = 0.2465). The balanced-supplier trend estimate is +0.0289 (*p* = 0.2698). The shorter 2015–2021 estimate is +0.0564 (*p* = 0.0714).
+
+```{r table-h1, results='asis'}
+labels <- c(full_baseline_replication="Baseline, 2015–2025",
+            balanced_suppliers_baseline="Balanced supplier-year presence",
+            full_with_distance_linear_trend="Distance-specific linear trend",
+            balanced_with_distance_linear_trend="Balanced presence + trend")
+tab <- data.frame(Specification=unname(labels[h1$specification]),
+                  Coefficient=fmt(h1$estimate,4), SE=fmt(h1$se,4),
+                  `p-value`=fmtp(h1$p_value),
+                  `Estimation N`=format(h1$n_estimated,big.mark=","),check.names=FALSE)
+knitr::kable(tab,caption="Aggregate post-2020 distance interaction: H1")
+```
+
+A further check asks whether the relationship between distance and imports was already changing before 2020. It was: the pre-2020 annual distance interactions differ jointly from zero ($F=4.716$, *p* = 0.000836). Consequently, it would be misleading to attribute the baseline difference to a sudden break beginning with the pandemic. Coverage checks excluding Romania or the chapters with notable Romanian historical gaps do not reverse the baseline sign; nevertheless, the temporal-trend specification materially changes the estimate. These results do not establish that distant suppliers became intrinsically more attractive. Rather, they provide no robust evidence of a generalized strengthening of the distance penalty after 2020.
+
+## Sectoral results
+
+The sectoral model shows that the aggregate result conceals differences across HS2 chapters. It is important to examine both the sign and the robustness of the estimates: a negative coefficient is consistent with a relative disadvantage for distant suppliers, but the strength of that evidence depends on the specification and the adjustment for testing 68 chapters. The counts in Table 2 summarize the distribution of coefficients rather than the number of industries in which actual production relocation has been observed. In the baseline, 57 of 68 coefficients are positive and 11 negative; three negative coefficients survive BH adjustment. Under the shorter period, 24 are negative and three survive adjustment. The common-trend model produces 28 negative coefficients, five adjusted-significant. In the final sector-specific-trend validation, five negative coefficients survive adjustment. These counts do not indicate a widespread increase in proximity advantage across EU import sectors.
+
+```{r table-h2-counts, results='asis'}
+countrow <- function(d,label) data.frame(Specification=label,
+  Positive=sum(d$estimate>0), Negative=sum(d$estimate<0),
+  `Negative, BH < .05`=sum(d$estimate<0 & d$p_BH<.05),
+  `Positive, BH < .05`=sum(d$estimate>0 & d$p_BH<.05),check.names=FALSE)
+counts <- rbind(countrow(h2base,"Baseline, 2015–2025"),
+                countrow(h2early,"2015–2021"),
+                countrow(h2trend,"Common distance trend"),
+                countrow(h2val,"Sector-specific distance trends"))
+knitr::kable(counts,caption="Signs and BH-adjusted significance of sector-level distance interactions")
+```
+
+A key result of the final validation is that HS50 (silk) loses its negative association after controlling for its own distance trend. The estimate moves from -0.124 in the baseline to approximately -0.002 in the final model (*p* = 0.958). Thus, the apparent stability of HS50 in the first three models was not sufficient evidence of a distinct post-2020 shift. In contrast, HS36 (explosives and pyrotechnic products) and HS88 (aircraft, spacecraft and related parts) remain negative and BH-significant in all four models.
+
+```{r table-h2-selected, results='asis'}
+selected <- c(36L,50L,88L)
+sector_label <- c(`36`="Explosives / pyrotechnics",`50`="Silk",`88`="Aircraft / spacecraft")
+getbeta <- function(d,k) d$estimate[match(k,as.integer(d$hs2))]
+getbh <- function(d,k) d$p_BH[match(k,as.integer(d$hs2))]
+tab <- data.frame(HS2=sprintf("%02d",selected),
+                  Sector=unname(sector_label[as.character(selected)]),
+                  Baseline=fmt(getbeta(h2base,selected),3),
+                  `2015–2021`=fmt(getbeta(h2early,selected),3),
+                  `Common trend`=fmt(getbeta(h2trend,selected),3),
+                  `Sector trend`=fmt(getbeta(h2val,selected),3),
+                  `Final BH p`=fmtp(getbh(h2val,selected)),check.names=FALSE)
+knitr::kable(tab,caption="Sector-specific post-distance coefficients: stability of HS36, HS50 and HS88")
+```
+
+In the sector-specific-trend model, HS36 has $\widehat\beta=-0.2162$ (SE 0.0623, BH-adjusted *p* = 0.00395), and HS88 has $\widehat\beta=-0.2079$ (SE 0.0365, BH-adjusted *p* approximately $2.87\times10^{-7}$). These values are changes in the log-distance elasticity, **not** percentage declines in import values. For example, the conditional difference associated with doubling bilateral distance is $100[\exp(\widehat\beta\ln2)-1]$, rather than $100[\exp(\widehat\beta)-1]$ unless log distance changes by exactly one unit.
+
+Three additional chapters—HS47, HS53 and HS67—are negative and BH-significant in the final validation, but not consistently so across the earlier specifications. They are disclosed rather than silently omitted, yet they do not meet the paper's stringent cross-specification stability criterion. Only three of the 68 pre-period sector-specific linear distance trends are BH-significant in the separate diagnostic; this is not evidence that the remaining 65 satisfy a causal parallel-trends assumption. Appendix B reports the complete sector-level baseline and final validation estimates.
+
+In ordinary terms, the strongest sectoral evidence suggests that imports from more distant suppliers evolved less favourably than those from nearer suppliers in two specialized product chapters. This is a relative pattern across suppliers, not a finding that import volumes fell, factories moved or all nearby countries benefited. The interpretation of H2 is consequently narrow. The evidence is compatible with industry-specific shifts that are relatively less favorable to distant suppliers, especially in HS36 and HS88. It does not demonstrate that the pandemic caused firms to relocate supply chains, and the prevalence of positive coefficients makes a sweeping sector-wide proximity narrative untenable.
+
+## Türkiye’s relative performance
+
+Table 4 reports the Türkiye comparison in the two H2-selected sectors. The country list was fixed using pre-2020 trade coverage and distance criteria, not the estimated post-2020 performance of Türkiye. Nevertheless, the HS36 and HS88 comparisons are exploratory because those chapters were selected after inspecting the sector-level results. In addition, the roster of 31 comparison countries is fixed, but the number of suppliers contributing observations to an individual estimation sample may be smaller, particularly in the restricted 2015–2021 HS36 model. For HS36, the full-period model initially suggests that Türkiye performed more favourably than the comparison suppliers (a conditional differential of approximately 74.9%). But the estimated advantage almost disappears when we restrict the period to 2015–2021 and when we allow Türkiye to follow its own earlier trend. The apparent advantage therefore depends heavily on the model used. In coefficient terms, the baseline estimate is +0.5592, compared with +0.0236 in the shorter period and approximately zero in the trend-adjusted model. The baseline result is therefore not stable enough to support an inference of a durable Turkish advantage.
+
+For HS88, the full-period comparison provides little indication of an advantage for Türkiye. In the shorter-period and trend-adjusted analyses, the estimated relative change is instead negative. The corresponding coefficients are +0.0634, -0.2898 and -0.1958, respectively. However, the pre-2020 Türkiye-specific trend diagnostic is strongly significant (*p* approximately $4.78\times10^{-7}$), making a clean post-2020 causal comparison especially implausible. These differences may reflect sector-specific competitiveness, product mix, reporting coverage or other developments, not necessarily proximity-driven sourcing changes.
+
+```{r table-h3, results='asis'}
+sp <- c(baseline_2015_2025="Baseline, 2015–2025",
+        preH6_2015_2021="2015–2021",
+        turkey_linear_trend="Türkiye-specific linear trend")
+h3tab <- data.frame(HS2=sprintf("%02d",as.integer(h3$hs2)),
+  Specification=unname(sp[h3$specification]),
+  Coefficient=fmt(h3$estimate,4),
+  `Conditional differential (%)`=fmt(h3$effect_pct,1),
+  `Clustered SE`=fmt(h3$se,4),
+  `Nominal p-value`=fmtp(h3$p_value),
+  `Estimation N`=format(h3$n_estimated,big.mark=","),check.names=FALSE)
+knitr::kable(h3tab,caption="Exploratory Türkiye comparison: HS36 and HS88")
+```
+
+```{r table-h3-pre, results='asis'}
+p3 <- data.frame(HS2=sprintf("%02d",as.integer(h3pre$hs2)),
+                 `Pre-2020 trend estimate`=fmt(h3pre$pretrend_estimate,4),
+                 `Nominal p-value`=fmtp(h3pre$pretrend_p),
+                 `Estimation N`=format(h3pre$n_estimated,big.mark=","),check.names=FALSE)
+knitr::kable(p3,caption="Exploratory Türkiye comparison: 2015–2019 differential linear trends")
+```
+
+The nominal p-values in Tables 4 and 5 are conventional supplier-clustered calculations and should not be interpreted as valid confirmatory tests with only one focal supplier. They should not be used to rank the two sectors as causal success or failure stories. The inferential limitations of a single focal supplier are fundamental. The appropriate country-level conclusion is that **Türkiye's relative performance does not display a consistent positive post-2020 pattern in the two sectors most suggestive of a stronger distance penalty in H2**.
+
+# Discussion and implications
+
+## Interpreting the aggregate, sectoral and country-level findings
+
+The paper's main analytical contribution is the separation of three questions often conflated in the nearshoring debate. At the aggregate level, the post-2020 distance interaction does not provide robust support for a stronger geographical proximity advantage. At the sectoral level, the data reveal meaningful heterogeneity, with two chapters showing particularly stable negative interactions. At the country level, Türkiye's relative performance in those same chapters is not consistently positive. These findings are compatible rather than contradictory.
+
+The first distinction concerns **distance sensitivity versus supplier identity**. A negative sector-specific distance interaction describes the conditional pattern across many bilateral trade relationships. It does not imply that every nearby supplier gained. Suppliers differ in capacity, product specialization, quality, contract relationships, trade policy exposure and ability to respond to demand. A nearby country's nominal export value can stagnate or fall while the sector-level distance gradient becomes more negative.
+
+The second distinction concerns **trade outcomes versus organizational decisions**. Import values do not directly reveal whether a buyer replaced an existing supplier, opened a second sourcing channel, moved production, or paid a higher price for the same goods. In HS88, for example, a broad chapter-level trade series may reflect specialized production networks and lumpy deliveries. In HS36, demand and procurement structures may differ from ordinary consumer-goods trade. These are reasons for caution, not mechanisms established by the present models.
+
+The third distinction concerns **historical change versus causal effect**. The post-2020 years encompass several simultaneous disruptions. Fixed effects remove important classes of confounding variation, but they cannot isolate a unique pandemic mechanism. The H1 pre-period diagnostic and the sensitivity of HS50 to sector-specific trends make the importance of the counterfactual trajectory visible rather than concealing it.
+
+## Implications for firms and policymakers
+
+For procurement and supply-chain managers, the evidence argues against treating proximity as a universal proxy for resilience. Distance can matter for transport times, coordination and the ability to respond to disruptions, but the trade data used here do not measure delivery reliability or the probability of supply interruption. A change in import values therefore cannot establish that one sourcing arrangement is operationally safer than another. This distinction should temper any attempt to translate the sector coefficients directly into procurement recommendations. A sourcing strategy should evaluate delivery reliability, input concentration, supplier capabilities, flexibility, costs and regulatory exposure alongside physical distance. The sector-specific patterns identified here can help prioritize questions for detailed supply-chain audits, but they cannot replace supplier-level evidence.
+
+For trade policymakers, the findings caution against interpreting a favorable bilateral export trend as proof that regionalization has occurred. Equally, a lack of aggregate nearshoring evidence does not mean that no sectoral adjustment took place. Policies aimed at improving regional supply-chain participation should attend to sector-specific productive capacity, certification, logistics and market access rather than assume that geographical proximity automatically creates an advantage.
+
+For Türkiye, the exploratory comparison suggests that geographic location alone is an insufficient explanation of EU market outcomes. This does not negate the country's potential commercial advantages. It means that the two sectors selected by the EU-wide distance analysis do not, in the available conditional comparisons, show a stable Turkish post-2020 performance gain. A more decisive assessment would require detailed product and firm information, which lies outside the current study.
+
+## Limitations
+
+The analysis has several material limitations. First, nominal import values confound quantity, price and composition changes. Second, missing trade records are not converted to zeros, so reporting variation and the extensive margin remain imperfectly measured. Third, HS revisions H4, H5 and H6 are not comprehensively harmonized. Fourth, the five-year pre-period is short for identifying complex historical trajectories. Fifth, the 182-supplier estimation universe excludes suppliers lacking matched CEPII distances and may differ from the full global supplier universe.
+
+Sixth, although the sectoral analysis adjusts p-values for multiple comparisons, its results depend on the maintained PPML specification and fixed effects. The large joint Wald statistics were not relied upon because the contrast covariance matrix, while full rank, is ill-conditioned. Seventh, the Türkiye comparison uses one focal supplier, rendering conventional supplier-clustered p-values unreliable for confirmatory treatment-level inference. Eighth, HS36 and HS88 were selected after H2 results were observed, so the Türkiye exercise is exploratory. These qualifications are part of the reported evidence, not afterthoughts.
+
+# Conclusion
+
+The analysis does not find robust evidence that the geographical distance penalty in EU imports generally strengthened after 2020. The baseline aggregate distance interaction is positive, and its apparent statistical significance disappears once a distance-specific secular trend is allowed. Sectoral estimates nevertheless vary: HS36 and HS88 retain negative, BH-adjusted post-distance interactions across four alternative specifications, including controls for sector-specific distance trends. This stability is consistent with selected industry-level changes relatively unfavorable to distant suppliers, not with a uniform transformation of EU sourcing.
+
+A complementary Türkiye analysis reinforces the importance of separating the geography of a market from the performance of a particular trading partner. Neither HS36 nor HS88 provides a stable positive Türkiye differential relative to a fixed set of more distant competitors. Because the exercise involves one focal supplier and data-dependent sector selection, it cannot establish causal country-specific effects.
+
+For future research, the clearest next step is to connect trade-value patterns with more disaggregated products, physical quantities, supplier relationships and measures of transport or delivery conditions. Such information would help distinguish substitution toward nearby sources from changes in prices or the composition of imports. It would also allow researchers to examine whether any shift was temporary or persisted after the immediate disruptions.
+
+The broader lesson is methodological and managerial: **nearshoring should be evaluated as an empirical proposition, not inferred from a compelling disruption narrative**. Aggregate trade patterns, sector-specific distance relationships and individual supplier performance need not move together. The present evidence identifies where the nearshoring hypothesis lacks support and where more granular research could usefully investigate sourcing mechanisms.
+
+# Declarations {-}
+
+**Funding:** [Author to confirm funding statement.]  
+**Conflict of interest:** [Author to confirm declaration.]  
+**Data availability:** Underlying UN Comtrade and CEPII data are publicly sourced. The derived model results and audit files are retained in the project; [author to specify whether code and derived outputs will be deposited in a repository].  
+**Ethics approval:** Not applicable to the use of aggregate public trade data, subject to journal requirements.  
+**Author contributions:** [Author to complete according to journal requirements.]
+
+# Appendix A. Data provenance and reproducibility {-}
+
+Data preparation, estimation and reporting are separated in the reproducible analytical workflow. The manuscript is generated from saved estimates rather than re-estimating the models during document preparation. The H1 eligible input contains 1,025,831 observed records, while the main estimation sample contains 994,063. The H2 baseline and sector-specific-trend validation share this estimation size. The exploratory Türkiye models use chapter-specific smaller samples. The absence of duplicate keys in the integrated file does not guarantee the completeness of all possible importer–supplier–year–chapter combinations.
+
+The H2 final-validation covariance audit reports 68 terms, 67 contrast dimensions, full rank, zero negative eigenvalues, no missing estimates and a condition number of approximately 878,856. These diagnostics are reported so readers can assess why the omnibus Wald statistic is not emphasized. 
+
+# Appendix B. Full H2 sectoral estimates {-}
+
+```{r appendix-h2, results='asis'}
+all <- h2base[,c("hs2","estimate","se","p_BH")]
+val <- h2val[,c("hs2","estimate","se","p_BH")]
+names(all) <- c("hs2","baseline","baseline_se","baseline_BH")
+names(val) <- c("hs2","validation","validation_se","validation_BH")
+full <- merge(all,val,by="hs2",sort=TRUE)
+tab <- data.frame(HS2=sprintf("%02d",as.integer(full$hs2)),
+  `Baseline beta`=fmt(full$baseline,3),`Baseline BH p`=fmtp(full$baseline_BH),
+  `Sector-trend beta`=fmt(full$validation,3),`Sector-trend BH p`=fmtp(full$validation_BH),
+  check.names=FALSE)
+knitr::kable(tab,caption="All 68 HS2 distance interactions: baseline and sector-specific-trend validation")
+```
+
+# Appendix C. Construction and Validation of the Türkiye Comparison Group {-}
+
+## C.1. Purpose and timing of country selection {-}
+
+The Türkiye exercise compares changes in EU imports from Türkiye with changes in imports from a geographically more distant group of established non-EU suppliers. This is a deliberately restricted descriptive benchmark, not a set of statistically matched counterfactual countries. The supplier screen was constructed from **2015–2019 observed trade** before the Türkiye-specific post-2020 coefficients were estimated. In contrast, HS36 and HS88 were selected *after* examining the H2 sector results. Keeping these two decisions distinct is essential: the country roster was not optimized for the Türkiye coefficients, but the choice of sectors was outcome-informed.
+
+The archived screening program (`01_data_control_screening.R`) first restricts the records to EU27 importers, the 68 HS2 chapters in scope and valid country-coded non-EU suppliers. It excludes aggregate partner codes and EU members. Türkiye remains in the screening population as the geographic reference, not as a comparator. The resulting supplier universe contains **206** codes. Trade shares are calculated from the sum of *observed* import values across that same eligible non-EU supplier universe and the same 68 chapters. Unavailable observations are not treated as zero trade.
+
+## C.2. Eligibility criteria for 2015–2019 {-}
+
+For supplier $j$, let $V_j$ be the sum of recorded EU27 import values over 2015–2019 in the covered HS2 chapters, and let $V=\sum_{k\in\mathcal{J}}V_k$ be the corresponding sum across valid non-EU suppliers. Define the observed pre-period share $s_j=V_j/V$, the number of distinct years $Y_j$, the number of distinct EU importers $I_j$, and the number of distinct HS2 chapters $H_j$. The archived screening code implements the rule
+
+$$
+E_j=\mathbf{1}\left\{Y_j=5,\quad I_j\geq20,\quad H_j\geq50,\quad s_j\geq0.001\right\}.
+$$
+
+Thus an eligible supplier must appear in **all five pre-2020 years**, be observed for **at least 20 of 27 EU importers**, cover **at least 50 of the 68 HS2 chapters**, and account for **at least 0.1% of the observed EU27 extra-EU import value** within the specified product and supplier universe. These are joint inclusion conditions, not a score or a rank. The import-share cutoff is applied to the fraction $s_j$, so 0.001 corresponds to 0.1%, not 1%. The screen retains **41 of the 206 suppliers**. Presence in five years, or coverage of 50 chapters in the pooled period, must not be confused with a complete importer–supplier–year–chapter panel.
+
+## C.3. Weighted distance and comparator selection {-}
+
+The next step distinguishes suppliers farther from the EU market than Türkiye, using the archived CEPII weighted bilateral distance variable `distw`. For EU importer $i$, the screening program calculates a *fixed pre-period weight* from its observed imports from the valid non-EU supplier universe:
+
+$$
+w_i=\frac{V_i}{\sum_{r\in\mathrm{EU27}}V_r},\qquad
+D_j=\sum_{i\in\mathrm{EU27}}w_i\,d_{ij}^{\mathrm{CEPII}},\qquad
+\sum_i w_i=1.
+$$
+
+Here $V_i$ is importer $i$'s recorded 2015–2019 value in the covered chapters and $d_{ij}^{\mathrm{CEPII}}$ is the CEPII weighted bilateral distance between importer $i$ and supplier $j$, in kilometres. The weights are **common across candidate suppliers**, not supplier-specific bilateral trade weights; no post-2020 observations enter their construction. The archived routine matches the bilateral distance pairs without regard to the direction of the CEPII row and uses the historical `ROU`–`ROM` code bridge for Romania. It checks that every required importer–supplier pair has a finite, positive distance and stops rather than silently renormalizing weights when a distance is missing.
+
+The comparator rule is strictly $D_j>D_{\mathrm{TUR}}$. The archived Turkish benchmark is approximately **2,214.82 km**. Applying this condition to the 41 trade-eligible suppliers, while excluding Türkiye itself, yields **31 more distant non-EU suppliers**. The 10 suppliers that do not enter the comparator set comprise Türkiye and nine other trade-eligible suppliers that fail the strict farther-than-Türkiye condition. The selected suppliers' recorded weighted distances range from approximately **2,226.84 km to 16,035.23 km**. This is a geographical contrast, not a claim that the 31 countries have parallel pre-2020 trends or are otherwise comparable in economic structure.
+
+Formally, the fixed set is
+
+$$
+\mathcal{C}=\left\{j\in\mathcal{J}:j\ne\mathrm{TUR},\ E_j=1,\ D_j>D_{\mathrm{TUR}}\right\},\qquad |\mathcal{C}|=31.
+$$
+
+The archived file `control_candidates_provisional.csv` stores the resulting `provisional_control`, `eligible_EU27`, and `farther_than_TUR` indicators. The **current estimation script reads those frozen indicators**, rather than recalculating the screening statistics during model estimation. Appendix Table C1 reproduces the saved roster directly from that file. No supplier is subsequently added or removed based on HS36/HS88 regression coefficients, significance, post-2020 performance or pretrend diagnostics.
+
+## C.4. Romanian data gaps and sensitivity analysis {-}
+
+The initial pre-period archive lacks Romanian import observations for HS71 and HS93 in 2015–2019. The screening program therefore labels the roster `PROVISIONAL_SOURCE_MISSING`. This is a **data-provenance warning**, not a claim that the 31 selected countries are absent from the data or that their distance values are missing. It indicates that the original EU27 source archive cannot be certified as complete for all the intended trade cells. The cause of the missing source records has not been established, and they are not replaced with zero values.
+
+To assess whether the missing Romanian records could be driving the *observed screening classification*, the archived program repeats the four-part trade-eligibility screen for **EU26, excluding Romania**, recalculating supplier shares using the corresponding EU26 denominator. The archived `control_exante_screening.csv` and `control_share_sensitivity.csv` record **zero changes in eligibility among the 206 screened suppliers and zero crossings of the 0.1% share threshold**. This robustness result concerns the *country-selection decision*; it does not recover the unobserved Romanian records, prove that their inclusion could never affect the screen, or establish unbiased regression estimates. The 31-country roster is therefore described as **frozen and provisionally validated**, not as unconditionally final or causally identified.
+
+The selection stages and EU26 diagnostics are summarized in Appendix Table C0, computed from the archived screening output.
+
+```{r appendix-h3-screen-flow, results='asis'}
+screen_path <- file.path(project_dir, 'control_exante_screening.csv')
+if (!file.exists(screen_path)) stop('Appendix C requires control_exante_screening.csv')
+screen <- read.csv(screen_path, stringsAsFactors=FALSE)
+stopifnot(nrow(screen)==206L,
+          all(c('partner_iso','eligible_EU27','provisional_control',
+                'screen_stable_EU26','share_threshold_crosses','weighted_distw_km') %in% names(screen)),
+          sum(screen$eligible_EU27, na.rm=TRUE)==41L,
+          sum(screen$provisional_control, na.rm=TRUE)==31L,
+          all(screen$screen_stable_EU26),
+          !any(screen$share_threshold_crosses,na.rm=TRUE))
+flow <- data.frame(
+  `Selection stage / diagnostic`=c('Valid non-EU supplier universe (including Türkiye)',
+    'Meeting all four 2015–2019 trade-eligibility criteria',
+    'Frozen farther-than-Türkiye comparators (excluding Türkiye)',
+    'Eligibility decisions changed when Romania is excluded',
+    'Suppliers crossing the 0.1% share threshold in EU26'),
+  `Number of suppliers`=c(nrow(screen),sum(screen$eligible_EU27),
+    sum(screen$provisional_control),sum(!screen$screen_stable_EU26),
+    sum(screen$share_threshold_crosses)),check.names=FALSE)
+knitr::kable(flow,caption='Ex-ante comparator selection and EU26 screening sensitivity')
+```
+
+## C.5. Comparison countries and screening characteristics {-}
+
+Appendix Table C1 reproduces the **actual 31-country roster from the local screening file**. Distances and pre-period shares are displayed as recorded; the eligibility and distance thresholds are taken from the archived screening code rather than inferred from the selected observations. The table is generated directly from the archived CSV so that the published roster cannot silently diverge from the estimation input.
+
+```{r appendix-h3-selection, results='asis'}
+selection_path <- file.path(project_dir, "control_candidates_provisional.csv")
+if (!file.exists(selection_path)) stop("Appendix C requires control_candidates_provisional.csv")
+ctrl <- read.csv(selection_path, stringsAsFactors=FALSE)
+required_ctrl <- c("partner_iso", "provisional_control", "eligible_EU27",
+  "farther_than_TUR", "weighted_distw_km", "share", "years_observed",
+  "importers_observed", "hs2_observed", "screen_stable_EU26",
+  "share_threshold_crosses", "selection_status")
+stopifnot(all(required_ctrl %in% names(ctrl)))
+control_set <- ctrl[!is.na(ctrl$provisional_control) & ctrl$provisional_control &
+  !is.na(ctrl$eligible_EU27) & ctrl$eligible_EU27 &
+  !is.na(ctrl$farther_than_TUR) & ctrl$farther_than_TUR, , drop=FALSE]
+control_set <- control_set[order(control_set$partner_iso), , drop=FALSE]
+stopifnot(nrow(control_set)==31L, !anyDuplicated(control_set$partner_iso),
+          !("TUR" %in% control_set$partner_iso),
+          all(control_set$selection_status == "PROVISIONAL_SOURCE_MISSING"))
+ctab <- data.frame(
+  `Supplier ISO3`=control_set$partner_iso,
+  `Weighted distance (km)`=format(round(control_set$weighted_distw_km),big.mark=","),
+  `Pre-2020 share (%)`=sprintf("%.3f",100*control_set$share),
+  `Years observed`=control_set$years_observed,
+  `EU importers`=control_set$importers_observed,
+  `HS2 chapters`=control_set$hs2_observed,
+  `EU26 screen stable`=ifelse(control_set$screen_stable_EU26,"Yes","No"),
+  check.names=FALSE)
+knitr::kable(ctab, caption="Frozen Türkiye comparator roster and archived screening characteristics")
+```
+
+## C.6. Estimation samples and the fixed country list {-}
+
+The Türkiye follow-up draws its candidate observations from EU27 imports involving Türkiye and $\mathcal{C}$ in HS36 and HS88, 2015–2025. Records must represent imports (`flow_code = "M"`) at the two-digit HS aggregation level. The same pre-specified roster of 31 comparison suppliers is used to define the candidate sample in each specification; no country is deliberately reselected. Actual estimation samples may contain fewer suppliers because the time restriction and the PPML estimator exclude some observed records or fixed-effect groups. In particular, the HS36 2015–2021 specification contains 30 supplier clusters in total (including Türkiye), whereas its full-period baseline contains 32. The HS88 specifications each contain 32 supplier clusters. The 2015–2019 diagnostic tests a differential Türkiye trend separately. The candidate comparison roster is not reselected by sector, post-2020 performance, coefficient sign, statistical significance or the pretrend test. Missing importer–supplier–year–chapter cells remain missing rather than being filled with zero trade.
+
+For each chapter, importer–supplier fixed effects absorb persistent bilateral differences, while importer–year fixed effects absorb annual conditions common to suppliers serving the same importer. The estimated Türkiye-by-post interaction therefore describes **conditional relative import-value performance against this particular supplier set**. It is not an estimate of firms moving production to Türkiye, nor a direct estimate of Türkiye’s EU market-share change.
+
+The Romanian source-data gap and EU26 screening sensitivity are documented in Section C.4. Neither the stable selection decisions nor the fact that HS71 and HS93 are outside the two Türkiye follow-up sectors resolves the wider source-data limitation. HS vintages H4, H5 and H6 are not fully harmonized, and the 2015–2021 restriction removes H6 years without resolving the H4/H5 change.
+
+Most importantly, Türkiye is the **only focal supplier**. Supplier-clustered standard errors calculated across at most 32 suppliers (30 in the HS36 2015–2021 estimation) do not provide reliable confirmatory inference for an effect concentrated in a single treated supplier. Together with the H2-based selection of HS36 and HS88, this makes the exercise exploratory. The results should be read as a transparent comparison of observed trade patterns, not as causal evidence of nearshoring.
+
+## C.7. Coverage of observed trade records {-}
+
+Appendix Table C2 reports the number of observed importer–supplier–year–chapter records by period and group. It is a coverage diagnostic, not a balanced-panel claim.
+
+```{r appendix-h3-coverage, results='asis'}
+cover <- h3coverage
+stopifnot(all(c("hs2","year","tur","observations","suppliers","importers") %in% names(cover)))
+cover$Period <- ifelse(cover$year<=2019,"2015–2019","2020–2025")
+agg <- aggregate(cover$observations,
+                 by=list(HS2=sprintf("%02d",as.integer(cover$hs2)),
+                         Period=cover$Period,
+                         Supplier=ifelse(cover$tur==1,"Türkiye","Comparators")),FUN=sum)
+names(agg)[4] <- "Observed cells"
+knitr::kable(agg,caption="Observed trade cells in the Türkiye follow-up")
+```
+
+# References {-}
+
+::: {#refs}
+:::
